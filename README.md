@@ -78,59 +78,108 @@ control plane.
 For further information on how to design and integrate such accelerators,
 see `ips/hwpe-stream/doc` and https://arxiv.org/abs/1612.05974.
 
+## Documentation
+
+- The [datasheet](doc/datasheet/datasheet.pdf) contains details about Memory Map, Peripherals, Registers etc.
+- PULPissimo was presented at the Week of Open Source Hardware (WOSH) 2019 at ETH Zurich.
+  - [Slides](https://pulp-platform.org/docs/riscv_workshop_zurich/schiavone_wosh2019_tutorial.pdf)
+  - [Video](https://www.youtube.com/watch?v=27tndT6cBH0)
+
 ## Getting Started
+We provide a [simple runtime](#simple-runtime) and a [full featured
+runtime](#software-development-kit) for PULPissimo. We recommend you try out
+first the minimal runtime and when you hit its limitations you can try the full
+runtime by installing the SDK.
 
-### Prerequisites
-To be able to use the PULPissimo platform, you need to have installed the software
-development kit for PULP/PULPissimo.
+After having chosen a runtime you can run software by either [simulating the
+hardware](#building-the-rtl-simulation-platform) or running it in a [software
+emulation](#building-and-using-the-virtual-platform).
 
-First install the system dependencies indicated here:
-https://github.com/pulp-platform/pulp-builder/blob/master/README.md
+### Simple Runtime
+The simple runtime is here to get you started quickly. Using it can run and
+write programs that don't need any advanced features.
 
-In particular don't forget to set PULP_RISCV_GCC_TOOLCHAIN.
+First install the system dependencies indicated
+[here](https://github.com/pulp-platform/pulp-runtime/blob/master/README.md)
 
-Then execute the following commands:
+Then make sure you have
+[pulp-riscv-gnu-toolchain](https://github.com/pulp-platform/pulp-riscv-gnu-toolchain)
+installed (either by compiling it or using one of the binary releases under
+available under the release tab) and point `PULP_RISCV_GCC_TOOLCHAIN` to it:
+
 ```
-git clone https://github.com/pulp-platform/pulp-builder.git
-cd pulp-builder
-git checkout 0e51ae60d66f4ec326582d63a9fcd40ed2a70e15
+export PULP_RISCV_GCC_TOOLCHAIN=YOUR_PULP_TOOLCHAIN_PATH
+```
+
+Get the repository for the simple runtime:
+```
+git clone https://github.com/pulp-platform/pulp-runtime/
+```
+The simple runtime supports many different hardware configurations. We want PULPissimo:
+```
+cd pulp-runtime
 source configs/pulpissimo.sh
-./scripts/clean
-./scripts/update-runtime
-./scripts/build-runtime
-source sdk-setup.sh
-source configs/rtl.sh
-cd ..
+```
+
+Now we are ready to set up the simulation environment. Normally you would want
+to simulate the hardware design running your program, so go
+[here](#building-the-rtl-simulation-platform).
+
+
+### Software Development Kit
+If you need a more complete runtime (drivers, tasks etc.) you can install the
+software development kit for PULP/PULPissimo.
+
+First install the system dependencies indicated
+[here](https://github.com/pulp-platform/pulp-builder/blob/master/README.md)
+
+In particular don't forget to set `PULP_RISCV_GCC_TOOLCHAIN`.
+
+You can now either follow the steps outlined [here](https://github.com/pulp-platform/pulp-sdk/#standard-sdk-build)
+to build the full sdk or just call
+```
+make build-pulp-sdk
+```
+and then set up the necessary environment variables with
+```
+source env/pulpissimo.sh
 ```
 
 ### Building the RTL simulation platform
 To build the RTL simulation platform, start by getting the latest version of the
 IPs composing the PULP system:
-```
-./update-ips
+```bash
+make checkout
 ```
 This will download all the required IPs, solve dependencies and generate the
-scripts by calling `./generate-scripts`.
+scripts. The default dependency management tool is IPApproX, where `./update-ips` and `./generate-scripts` are called. If the environment variable `BENDER` is set, bender is used as the dependency management tool.
 
 After having access to the SDK, you can build the simulation platform by doing
 the following:
-```
+```bash
 source setup/vsim.sh
-make clean build
+make build
 ```
 This command builds a version of the simulation platform with no dependencies on
 external models for peripherals. See below (Proprietary verification IPs) for
 details on how to plug in some models of real SPI, I2C, I2S peripherals.
 
-### Downloading and running tests
-Finally, you can download and run the tests; for that you can checkout the
-following repositories:
+For more advanced usage have a look at `./generate-scripts --help` and
+`update-ips --help` for IPApproX, or `./bender --help` for bender.
 
-Runtime tests: https://github.com/pulp-platform/pulp-rt-examples
+Also check out the output of `make help` for more useful Makefile targets.
+
+### Downloading and running examples
+Finally, you can download and run examples; for that you can checkout the
+following repositories depending on whether you use the simple runtime or the full sdk.
+
+Simple Runtime: https://github.com/pulp-platform/pulp-runtime-examples
+
+SDK: https://github.com/pulp-platform/pulp-rt-examples
 
 Now you can change directory to your favourite test e.g.: for an hello world
 test, run
-```
+```bash
 cd pulp-rt-examples/hello
 make clean all run
 ```
@@ -139,13 +188,13 @@ PULP L2 memory. If you want to simulate a more realistic scenario (e.g.
 accessing an external SPI Flash), look at the sections below.
 
 In case you want to see the Modelsim GUI, just type
-```
+```bash
 make run gui=1
 ```
 before starting the simulation.
 
 If you want to save a (compressed) VCD for further examination, type
-```
+```bash
 make run vsim/script=export_run.tcl
 ```
 before starting the simulation. You will find the VCD in
@@ -154,23 +203,17 @@ before starting the simulation. You will find the VCD in
 
 ### Building and using the virtual platform
 
-Once the RTL platform is installed, the following commands can be executed to
-install and use the virtual platform:
-```
-git clone https://github.com/pulp-platform/pulp-builder.git
-cd pulp-builder
-git checkout 7bd925324fcecae2aad9875f4da45b27d8356796
-source configs/pulpissimo.sh
-./scripts/build-gvsoc
-source sdk-setup.sh
-source configs/gvsoc.sh
-cd ..
+Once the sdk is installed, the following commands can be executed in the sdk
+directory to use the virtual platform:
+```bash
+source sourceme.sh
+source configs/platform-gvsoc.sh
 ```
 
 Then tests can be compiled and run as for the RTL platform. When switching from
 one platform to another, it may be needed to regenrate the test configuration
 with this command:
-```
+```bash
 make conf
 ```
 
@@ -195,7 +238,8 @@ follow the section below to generate the bitstreams yourself.
 ### Bitstream Generation
 In order to generate the PULPissimo bitstream for a supported target FPGA board
 first generate the necessary synthesis include scripts by starting the
-`update-ips` script in the pulpissimo root directory:
+`update-ips` script in the pulpissimo root directory when using IPApproX (Bender
+compatibility may not be available yet):
 
 ```Shell
 ./update-ips
@@ -262,6 +306,7 @@ platform by running the following commands within the SDK's root directory:
 source configs/pulpissimo.sh
 source configs/fpgas/pulpissimo/<board_target>.sh
 ```
+**Currently, the only available board_target in the SDK is the genesys2.sh board. However, there are no board specific settings in this file except for the clock frequency and UART baudrate that can easily be overidden (see below). You can just source the genesys2.sh target regardless of which FPGA board you are actually using and override the frequencies and baudrate in your application. The only reason you need to source the genesys2.sh configuration file instead of e.g. the rtl platform configuration is to instruct the SDK to omit all runtime initialization (the code executed before your main function is called on the core) of the FLLs that are not available in the FPGA version of PULPissimo.**
 
 If you updated the SDK don't forget to recompile the SDK and the dependencies.
 
@@ -472,8 +517,8 @@ repository is structured as follows:
   e.g. SPI flash and camera.
 - `rtl` could also contain other material (e.g. global includes, top-level
   files)
-- `ips` contains all IPs downloaded by `update-ips` script. Most of the actual
-  logic of the platform is located in these IPs.
+- `ips` contains all IPs downloaded by `update-ips` script when using IPApproX.
+  Most of the actual logic of the platform is located in these IPs.
 - `sim` contains the ModelSim/QuestaSim simulation platform.
 - `pulp-sdk` contains the PULP software development kit; `pulp-sdk/tests`
   contains all tests released with the SDK.
@@ -485,6 +530,13 @@ repository is structured as follows:
   this file.
 - `rtl_list.yml` contains the list of places where local RTL sources are found
   (e.g. `rtl/tb`, `rtl/vip`).
+- `Bender.yml` contains the package information used with bender. This includes
+  a list of IPs required and source files contained within this repository.
+- When using bender, other files may be relevant: `Bender.local` contains
+  configs for bender, including overrides for dependencies, `Bender.lock` is a
+  generated file used by bender, `bender` is the bender executable fetched by
+  the makefile, `.bender` directory contains the database and checkouts used by
+  bender.
 
 ## Requirements
 The RTL platform has the following requirements:
@@ -502,8 +554,8 @@ The PULP and PULPissimo platforms are highly hierarchical and the Git
 repositories for the various IPs follow the hierarchy structure to keep maximum
 flexibility.
 Most of the complexity of the IP updating system are hidden behind the
-`update-ips` and `generate-scripts` Python scripts; however, a few details are
-important to know:
+`update-ips` and `generate-scripts` Python scripts, or the bender software;
+however, a few details are important to know:
 - Do not assume that the `master` branch of an arbitrary IP is stable; many
   internal IPs could include unstable changes at a certain point of their
   history. Conversely, in top-level platforms (`pulpissimo`, `pulp`) we always
@@ -514,7 +566,8 @@ important to know:
   GitHub. However, for development it is often easier to use SSH instead,
   particularly if you want to push changes back.
   To enable this, just replace `https://github.com` with `git@github.com` in the
-  `ipstools_cfg.py` configuration file in the root of this repository.
+  `ipstools_cfg.py` configuration file in the root of this repository for IPApproX.
+  Bender compatibility may not be perfect yet.
 
 The tools used to collect IPs and create scripts for simulation have many
 features that are not necessarily intended for the end user, but can be useful
@@ -530,7 +583,7 @@ The pull request will be evaluated and checked with our regression test suite
 for possible integration.
 If you want to replace our version of an IP with your GitHub fork, just add
 `group: YOUR_GITHUB_NAMESPACE` to its entry in `ips_list.yml` or
-`ips/pulp_soc/ips_list.yml`.
+`ips/pulp_soc/ips_list.yml` when using IPApproX, or update the Bender.yml file.
 While we are quite relaxed in terms of coding style, please try to follow these
 recommendations:
 https://github.com/pulp-platform/ariane/blob/master/CONTRIBUTING.md
