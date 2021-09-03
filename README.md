@@ -95,6 +95,18 @@ After having chosen a runtime you can run software by either [simulating the
 hardware](#building-the-rtl-simulation-platform) or running it in a [software
 emulation](#building-and-using-the-virtual-platform).
 
+### Prerequisites
+PULPissimo is a Microcontroller provided in SystemVerilog RTL description. As such,
+it can be used and evaluated with many different tools. Out of the box, we provide Makefile
+targets for RTL simulation with Mentor Questa SIM (Intel/Altera Modelsim is not supported at the moment)
+and Cadence Xcelium. Being purely written in SystemVerilog, in theory the whole design can be simulated 
+with any RTL simulator with (deccent!) SystemVerilog support. While an open source simulation target is 
+definitely on our wish- and todo-list (e.g. out-of-the box support for Verilator), this currently
+still requires more extensive modifications to the RTL and scripts.
+
+For FPGA implementation (see [FPGA Section](#FPGA)) we generate ready-made scripts for Synthesis and Implementation 
+for Xilinx Vivado for a number of different development boards.
+
 ### Simple Runtime
 The simple runtime is here to get you started quickly. Using it can run and
 write programs that don't need any advanced features.
@@ -110,16 +122,34 @@ available under the release tab) and point `PULP_RISCV_GCC_TOOLCHAIN` to it:
 ```
 export PULP_RISCV_GCC_TOOLCHAIN=YOUR_PULP_TOOLCHAIN_PATH
 ```
+Add the pulp-toolchain to your PATH variable:
+
+```
+export PATH=$PULP_RISCV_GCC_TOOLCHAIN/bin:$PATH
+```
+
 
 Get the repository for the simple runtime:
 ```
 git clone https://github.com/pulp-platform/pulp-runtime/
 ```
-The simple runtime supports many different hardware configurations. We want PULPissimo:
+The simple runtime supports many different hardware configurations. We want PULPissimo.
+
 ```
 cd pulp-runtime
+```
+Then, to use the CV32E40P (formely RI5CY) core, type:
+
+```
 source configs/pulpissimo.sh
 ```
+
+or to use the Ibex (formely zero-riscy) core:
+
+```
+source configs/pulpissimo_ibex.sh
+```
+
 
 Now we are ready to set up the simulation environment. Normally you would want
 to simulate the hardware design running your program, so go
@@ -136,7 +166,11 @@ First install the system dependencies indicated
 In particular don't forget to set `PULP_RISCV_GCC_TOOLCHAIN`.
 
 You can now either follow the steps outlined [here](https://github.com/pulp-platform/pulp-sdk/#standard-sdk-build)
-to build the full sdk or just call
+to build the full sdk or install these python dependencies
+```
+pip3 install --user artifactory twisted prettytable sqlalchemy pyelftools 'openpyxl==2.6.4' xlsxwriter pyyaml numpy configparser pyvcd sphinx
+```
+and just call
 ```
 make build-pulp-sdk
 ```
@@ -145,14 +179,30 @@ and then set up the necessary environment variables with
 source env/pulpissimo.sh
 ```
 
+There exists a bug in GCC 11.1.0 which fails the sdk build with the error `'this' pointer is null [-Werror=nonnull]`.
+If you encounter this bug use the following temporary workaround instead to build the SDK:
+
+```
+VP_WORKAROUND_NONNULL_BUG=yes make build-pulp-sdk
+```
+
 ### Building the RTL simulation platform
+Note you need Questasim or Xcelium to do an RTL simulation of PULPissimo
+(verilator support planned, but not finished). Intel Modelsim for Intel FPGAs
+does *not* work.
+
 To build the RTL simulation platform, start by getting the latest version of the
 IPs composing the PULP system:
 ```bash
 make checkout
 ```
+
 This will download all the required IPs, solve dependencies and generate the
-scripts. The default dependency management tool is IPApproX, where `./update-ips` and `./generate-scripts` are called. If the environment variable `BENDER` is set, bender is used as the dependency management tool.
+scripts. The default dependency management tool is IPApproX, where
+`./update-ips` and `./generate-scripts` are called. If the environment variable
+`BENDER` is set (`export BENDER=1`),
+[Bender](https://github.com/pulp-platform/bender) is used as the dependency
+management tool which will eventually become the default in the future.
 
 After having access to the SDK, you can build the simulation platform by doing
 the following:
@@ -169,19 +219,79 @@ For more advanced usage have a look at `./generate-scripts --help` and
 
 Also check out the output of `make help` for more useful Makefile targets.
 
+### Developing your own RTL
+#### Bender How To
+With Bender developing on top of PULPissimo is getting a lot easier. The command
+line tool is installed in the project root directory if you invoke `make
+checkout BENDER=1`. It performs dependency resolution according to a manifest
+file called `Bender.yml`. The file lists all source files of the RTL project as
+well as its direct dependencies. Bender can be used to generate source file
+lists for various different tools for simulation, ASIC/FPGA synthesis etc. Have
+a look at the Bender [project
+documentation](https://github.com/pulp-platform/bender) if you want to know more
+about it. For now we will concentrate on the most important steps when
+developing on PULPissimo using Bender.
+
+#### Where are all the sub IPs (dependencies)?
+With IPApprox, all dependencies used to be checked out in a directory called
+`ips`. Instead, bender checks out the sub-ips in a hidden directory called
+`.bender/git/checkouts`. **You are not supposed to change the files in this
+directory.** If you want to get the path of a specific IP, call `./bender path
+<some ip (e.g. axi)>` to get the relative path to an IP. To list all IPs in the
+project, call `./bender packages -f`.
+
+#### Modifying an existing IP
+The hidden bender directory is not the location to introduce changes to the RTL
+of sub-ips. If you want to quickly try out changes to a sub-ip, call `./bender
+clone <ip_name>` to checkout a working copy of the ip into a directory called
+`working_dir`. Afterwards, call `./bender update` to instruct bender to update
+the IP paths in it's internal database followed by `make scripts`. Afterwards,
+every change you in the RTL of this working copy will be incorporated into the
+RTL simulation model (once you recompile it with `make build`) and the FPGA
+build (once you synthesize it).
+
+#### Adding a new IP to PULPissimo
+If you want to add new IPs to pulpissimo you most likely will have to fork the
+`pulp_soc` sub-ip since this is the main repository that contains most of the
+SoCs RTL logic. Thus, follow the steps above to create a working copy of
+pulp_soc. Then you can either add your additional source code directly to
+`pulp_soc`s source tree or, preferably, create a new repository with your source
+code, register the RTL source files in a `Bender.yml` manifest file and add this
+new repository as a dependency to `pulp_soc`'s `Bender.yml`. Then you are free
+to instantiate your new IP somewhere within pulp_soc. We make excessive use of
+this strategy throughout the pulpissimo project which is a collection of many
+different IP repositories.
+
+
 ### Downloading and running examples
-Finally, you can download and run examples; for that you can checkout the
-following repositories depending on whether you use the simple runtime or the full sdk.
+Finally, you can download and run examples; for that you can checkout the following repositories depending on whether you use the simple runtime or the full sdk.
 
 Simple Runtime: https://github.com/pulp-platform/pulp-runtime-examples
 
 SDK: https://github.com/pulp-platform/pulp-rt-examples
 
 Now you can change directory to your favourite test e.g.: for an hello world
-test, run
+test for the SDK, run
 ```bash
 cd pulp-rt-examples/hello
 make clean all run
+```
+or for the Simple Runtime:
+
+```bash
+cd pulp-runtime-examples/hello
+make clean all run
+```
+
+If you want to change the compiler flags, as for example 
+if you are using CV32E40P with the XPULP extensions but you want to compile 
+using only the RV32IMC instructions to compare performance,
+you can modify the Makefile inside the pulp-runtime-examples/hello folder adding:
+
+```
+PULP_ARCH_CFLAGS    =  -march=rv32imc -DRV_ISA_RV32
+PULP_ARCH_LDFLAGS   =  -march=rv32imc
+PULP_ARCH_OBJDFLAGS = -Mmarch=rv32imc
 ```
 The open-source simulation platform relies on JTAG to emulate preloading of the
 PULP L2 memory. If you want to simulate a more realistic scenario (e.g.
@@ -202,6 +312,10 @@ before starting the simulation. You will find the VCD in
 `<SRC_FILE_NAME>` is the name of the C source of the test.
 
 ### Building and using the virtual platform
+The virtual platform is a software-only model of the PULPissimo SoC (and also of
+other related SoCs). While a simulation of the hardware design is accurate it is
+also very very slow. The virtual platform helps you develop software quicker by
+providing a more or less accurate software-model of PULPissimo.
 
 Once the sdk is installed, the following commands can be executed in the sdk
 directory to use the virtual platform:
@@ -218,6 +332,13 @@ make conf
 ```
 
 More information is available in the documentation here: pulp-builder/install/doc/vp/index.html
+
+### Updating the bootrom
+You can customize the bootrom, have a look at the `boot_code/` directory. To
+import your changed version of the boot code into PULPissimo, just call
+```
+make import-bootcode
+```
 
 ## FPGA
 
@@ -238,8 +359,7 @@ follow the section below to generate the bitstreams yourself.
 ### Bitstream Generation
 In order to generate the PULPissimo bitstream for a supported target FPGA board
 first generate the necessary synthesis include scripts by starting the
-`update-ips` script in the pulpissimo root directory when using IPApproX (Bender
-compatibility may not be available yet):
+`update-ips` script in the pulpissimo root directory when using IPApproX or Bender:
 
 ```Shell
 ./update-ips
@@ -548,6 +668,9 @@ The RTL platform has the following requirements:
   `pip3 install pyyaml`).
 - The SDK has its own dependencies, listed in
   https://github.com/pulp-platform/pulp-sdk/blob/master/README.md
+- You will need the minicom command line application to view UART output in case
+  you use the 'run' Makefile target with the FPGA platform (discouraged, you
+  better use the approach outlined above)
 
 ## Repository organization
 The PULP and PULPissimo platforms are highly hierarchical and the Git
