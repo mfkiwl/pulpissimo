@@ -80,6 +80,7 @@ PULPissimo supports I/O on interfaces such as:
 - Camera Interface (CPI)
 - I2C
 - UART
+- Hyperbus
 - JTAG
 
 PULPissimo also supports integration of hardware accelerators (Hardware
@@ -95,7 +96,7 @@ see `ips/hwpe-stream/doc` and https://arxiv.org/abs/1612.05974.
 
 ## Documentation
 
-- The [datasheet](doc/datasheet/datasheet.pdf) contains details about Memory Map, Peripherals, Registers etc.
+- The [datasheet](doc/datasheet/datasheet.pdf) contains details about Memory Map, Peripherals, Registers etc. This may not be fully up-to-date.
 - PULPissimo was presented at the Week of Open Source Hardware (WOSH) 2019 at ETH Zurich.
   - [Slides](https://pulp-platform.org/docs/riscv_workshop_zurich/schiavone_wosh2019_tutorial.pdf)
   - [Video](https://www.youtube.com/watch?v=27tndT6cBH0)
@@ -130,7 +131,7 @@ First install the system dependencies indicated
 [here](https://github.com/pulp-platform/pulp-runtime/blob/master/README.md)
 
 Then make sure you have
-[pulp-riscv-gnu-toolchain](https://github.com/pulp-platform/pulp-riscv-gnu-toolchain)
+[riscv-gnu-toolchain](https://github.com/pulp-platform/riscv-gnu-toolchain)
 installed (either by compiling it or using one of the binary releases under
 available under the release tab) and point `PULP_RISCV_GCC_TOOLCHAIN` to it:
 
@@ -144,19 +145,19 @@ export PATH=$PULP_RISCV_GCC_TOOLCHAIN/bin:$PATH
 ```
 
 
-Get the repository for the simple runtime:
+The repository for the simple runtime is included as a submodule:
 ```
-git clone https://github.com/pulp-platform/pulp-runtime/
+git submodule update --init --recursive
 ```
 The simple runtime supports many different hardware configurations. We want PULPissimo.
 
 ```
-cd pulp-runtime
+cd sw/pulp-runtime
 ```
 Then, to use the CV32E40P (formely RI5CY) core, type:
 
 ```
-source configs/pulpissimo.sh
+source configs/pulpissimo_cv32.sh
 ```
 
 or to use the Ibex (formely zero-riscy) core:
@@ -170,8 +171,52 @@ Now we are ready to set up the simulation environment. Normally you would want
 to simulate the hardware design running your program, so go
 [here](#building-the-rtl-simulation-platform).
 
+### PULP FreeRTOS
+PULP FreeRTOS allows you to build applications using the FreeRTOS kernel. You
+can also choose to not use the FreeRTOS kernel and build a baremetal
+application, though in that case driver support is not yet fully fleshed out.
 
-### Software Development Kit
+First make sure you have
+[riscv-gnu-toolchain](https://github.com/pulp-platform/riscv-gnu-toolchain)
+installed (either by compiling it or using one of the binary releases under
+available under the release tab) and point your `RISCV` environment variable to
+it.
+
+Also we need to set up the simulation environment. Normally you would want to
+simulate the hardware design running your program, so go
+[here](#building-the-rtl-simulation-platform) to do that.
+
+
+Then get the repository for the pulp-freertos:
+```
+git clone https://github.com/pulp-platform/pulp-freertos/ sw/pulp-freertos
+```
+
+There are multiple hardware configuration supported. Select PULPissimo using the
+CV32E40P core.
+So enter the directory of pulp-freertos:
+
+```
+cd sw/pulp-freertos
+```
+
+and select the correct configuration:
+
+```
+source env/pulpissimo-cv32e40p.sh
+```
+
+You then can run a simple freertos hello world like this:
+
+```
+cd tests/hello_world_pmsis
+make all run
+```
+
+There are other tests in `tests/` you can run.
+
+### ~~Software Development Kit~~ (UNSUPPORTED WITH CURRENT RELEASE)
+
 If you need a more complete runtime (drivers, tasks etc.) you can install the
 software development kit for PULP/PULPissimo.
 
@@ -213,24 +258,20 @@ make checkout
 ```
 
 This will download all the required IPs, solve dependencies and generate the
-scripts. The default dependency management tool is IPApproX, where
-`./update-ips` and `./generate-scripts` are called. If the environment variable
-`BENDER` is set (`export BENDER=1`),
-[Bender](https://github.com/pulp-platform/bender) is used as the dependency
-management tool which will eventually become the default in the future.
+scripts. The dependency management tool is
+[Bender](https://github.com/pulp-platform/bender).
 
 After having access to the SDK, you can build the simulation platform by doing
 the following:
 ```bash
-source setup/vsim.sh
 make build
 ```
 This command builds a version of the simulation platform with no dependencies on
 external models for peripherals. See below (Proprietary verification IPs) for
 details on how to plug in some models of real SPI, I2C, I2S peripherals.
 
-For more advanced usage have a look at `./generate-scripts --help` and
-`update-ips --help` for IPApproX, or `./bender --help` for bender.
+For more advanced usage have a look at `./utils/bin/bender --help` for bender.
+
 
 Also check out the output of `make help` for more useful Makefile targets.
 
@@ -238,7 +279,7 @@ Also check out the output of `make help` for more useful Makefile targets.
 #### Bender How To
 With Bender developing on top of PULPissimo is getting a lot easier. The command
 line tool is installed in the project root directory if you invoke `make
-checkout BENDER=1`. It performs dependency resolution according to a manifest
+checkout`. It performs dependency resolution according to a manifest
 file called `Bender.yml`. The file lists all source files of the RTL project as
 well as its direct dependencies. Bender can be used to generate source file
 lists for various different tools for simulation, ASIC/FPGA synthesis etc. Have
@@ -248,8 +289,7 @@ about it. For now we will concentrate on the most important steps when
 developing on PULPissimo using Bender.
 
 #### Where are all the sub IPs (dependencies)?
-With IPApprox, all dependencies used to be checked out in a directory called
-`ips`. Instead, bender checks out the sub-ips in a hidden directory called
+Bender checks out the sub-ips in a hidden directory called
 `.bender/git/checkouts`. **You are not supposed to change the files in this
 directory.** If you want to get the path of a specific IP, call `./bender path
 <some ip (e.g. axi)>` to get the relative path to an IP. To list all IPs in the
@@ -259,11 +299,10 @@ project, call `./bender packages -f`.
 The hidden bender directory is not the location to introduce changes to the RTL
 of sub-ips. If you want to quickly try out changes to a sub-ip, call `./bender
 clone <ip_name>` to checkout a working copy of the ip into a directory called
-`working_dir`. Afterwards, call `./bender update` to instruct bender to update
-the IP paths in it's internal database followed by `make scripts`. Afterwards,
-every change you in the RTL of this working copy will be incorporated into the
-RTL simulation model (once you recompile it with `make build`) and the FPGA
-build (once you synthesize it).
+`working_dir`. Call `make scripts` to update the source files in the scripts.
+Afterwards, every change you make in the RTL of this working copy will be
+incorporated into the RTL simulation model (once you recompile it with
+`make build`) and the FPGA build (once you synthesize it).
 
 #### Adding a new IP to PULPissimo
 If you want to add new IPs to pulpissimo you most likely will have to fork the
@@ -349,10 +388,10 @@ make conf
 More information is available in the documentation here: pulp-builder/install/doc/vp/index.html
 
 ### Updating the bootrom
-You can customize the bootrom, have a look at the `boot_code/` directory. To
+You can customize the bootrom, have a look at the `sw/bootcode/` directory. To
 import your changed version of the boot code into PULPissimo, just call
 ```
-make import-bootcode
+make bootrom
 ```
 
 ## FPGA
@@ -374,22 +413,18 @@ follow the section below to generate the bitstreams yourself.
 
 ### Bitstream Generation
 In order to generate the PULPissimo bitstream for a supported target FPGA board
-first generate the necessary synthesis include scripts by starting the
-`update-ips` script in the pulpissimo root directory when using IPApproX or Bender:
+you can directly generate the bitstream for the desired board by running the
+corresponding make target.
 
-```Shell
-./update-ips
-```
-
-This will parse the ips_list.yml using the PULP IPApproX IP management tool to
+This will parse the `Bender.yml` using the PULP bender dependency management tool to
 generate tcl scripts for all the IPs used in the PULPissimo project. These files
 are later on sourced by Vivado to generate the bitstream for PULPissimo.
 
-Now switch to the fpga subdirectory and start the apropriate make target to
+You can also switch to the fpga subdirectory and start the apropriate make target to
 generate the bitstream:
 
 ```Shell
-cd fpga
+cd target/fpga
 make <board_target>
 ```
 In order to show a list of all available board targets call:
@@ -409,7 +444,7 @@ should now contain two files:
 
 If your invocation command to start Vivado isn't `vivado` you can use the Make
 variable `VIVADO` to specify the right command (e.g. `make genesys2
-VIVADO='vivado-2018.3 vivado'` for ETH CentOS machines.) Boot from ROM is not
+VIVADO='vitis vivado'` for ETH Almalinux machines.) Boot from ROM is not
 available yet. The ROM will always return the `jal x0,0` to trap the core until
 the debug module takes over control and loads the programm into L2 memory. Once
 the bitstream `pulpissimo_genesys2.bit` is generated in the fpga folder, you can
@@ -430,7 +465,7 @@ Now your FPGA is ready to emulate PULPissimo!
 
 ### Board Specific Information
 Have a look at the board specific README.md files in
-`fpga/pulpissimo-<board_target>/README.md` for a description of peripheral
+`target/fpga/pulpissimo-<board_target>/README.md` for a description of peripheral
 mappings and default clock frequencies.
 
 ### Compiling Applications for the FPGA Target
@@ -636,8 +671,8 @@ instead which has the same effect.
 ## Proprietary verification IPs
 The full simulation platform can take advantage of a few models of commercial
 SPI, I2C, I2S peripherals to attach to the open-source PULP simulation platform.
-In `rtl/vip/spi_flash`, `rtl/vip/i2c_eeprom`, `rtl/vip/i2s` you find the
-instructions to install SPI, I2C and I2S models.
+In `target/sim/vip/spi_flash`, `target/sim/vip/i2c_eeprom`, `target/sim/vip/i2s`
+you find the instructions to install SPI, I2C and I2S models.
 
 When the SPI flash model is installed, it will be possible to switch to a more
 realistic boot simulation, where the internal ROM of PULP is used to perform an
@@ -648,37 +683,28 @@ To do this, the `LOAD_L2` parameter of the testbench has to be switched from
 ## PULP platform structure
 After being fully setup as explained in the Getting Started section, this root
 repository is structured as follows:
-- `rtl/tb` contains the main platform testbench and the related files.
-- `rtl/vip` contains the verification IPs used to emulate external peripherals,
+- `target/sim/tb` contains the main platform testbench and the related files.
+- `target/sim/vip` contains the verification IPs used to emulate external peripherals,
   e.g. SPI flash and camera.
-- `rtl` could also contain other material (e.g. global includes, top-level
+- `hw` could also contain other material (e.g. global includes, top-level
   files)
-- `ips` contains all IPs downloaded by `update-ips` script when using IPApproX.
-  Most of the actual logic of the platform is located in these IPs.
-- `sim` contains the ModelSim/QuestaSim simulation platform.
-- `pulp-sdk` contains the PULP software development kit; `pulp-sdk/tests`
-  contains all tests released with the SDK.
-- `ipstools` contains the utils to download and manage the IPs and their
-  dependencies.
-- `ips_list.yml` contains the list of IPs required directly by the platform.
-  Notice that each of them could in turn depend on other IPs, so you will
-  typically find many more IPs in the `ips` directory than are listed in
-  this file.
-- `rtl_list.yml` contains the list of places where local RTL sources are found
-  (e.g. `rtl/tb`, `rtl/vip`).
+- `target/sim/questasim` contains the ModelSim/QuestaSim simulation platform.
+- `sw/pulp-runtime` contains the PULP runtime; `sw/regression_tests`
+  contains some tests released with the SDK or runtime. Some tests, especially
+  parallel tests, are not compatible with PULPissimo.
 - `Bender.yml` contains the package information used with bender. This includes
   a list of IPs required and source files contained within this repository.
 - When using bender, other files may be relevant: `Bender.local` contains
   configs for bender, including overrides for dependencies, `Bender.lock` is a
-  generated file used by bender, `bender` is the bender executable fetched by
-  the makefile, `.bender` directory contains the database and checkouts used by
-  bender.
+  generated file used by bender, `utils/bin/bender` is the bender executable
+  fetched by the makefile, `.bender` directory contains the database and
+  checkouts used by bender.
 
 ## Requirements
 The RTL platform has the following requirements:
-- Relatively recent Linux-based operating system; we tested *Ubuntu 16.04* and
-  *CentOS 7*.
-- Mentor ModelSim in reasonably recent version (we tested it with version *10.6b*
+- Relatively recent Linux-based operating system; we tested *Ubuntu 16.04*,
+  *CentOS 7*, and *Almalinux 8*.
+- QuestaSim in reasonably recent version (we tested it with version *2023.4*
 -- the free version provided by Altera is only partially working, see issue #12).
 - Python 3.4, with the `pyyaml` module installed (you can get that with
   `pip3 install pyyaml`).
@@ -688,51 +714,19 @@ The RTL platform has the following requirements:
   you use the 'run' Makefile target with the FPGA platform (discouraged, you
   better use the approach outlined above)
 
-## Repository organization
-The PULP and PULPissimo platforms are highly hierarchical and the Git
-repositories for the various IPs follow the hierarchy structure to keep maximum
-flexibility.
-Most of the complexity of the IP updating system are hidden behind the
-`update-ips` and `generate-scripts` Python scripts, or the bender software;
-however, a few details are important to know:
-- Do not assume that the `master` branch of an arbitrary IP is stable; many
-  internal IPs could include unstable changes at a certain point of their
-  history. Conversely, in top-level platforms (`pulpissimo`, `pulp`) we always
-  use *stable* versions of the IPs. Therefore, you should be able to use the
-  `master` branch of `pulpissimo` safely.
-- By default, the IPs will be collected from GitHub using HTTPS. This makes it
-  possible for everyone to clone them without first uploading an SSH key to
-  GitHub. However, for development it is often easier to use SSH instead,
-  particularly if you want to push changes back.
-  To enable this, just replace `https://github.com` with `git@github.com` in the
-  `ipstools_cfg.py` configuration file in the root of this repository for IPApproX.
-  Bender compatibility may not be perfect yet.
-
-The tools used to collect IPs and create scripts for simulation have many
-features that are not necessarily intended for the end user, but can be useful
-for developers; if you want more information, e.g. to integrate your own
-repository into the flow, you can find documentation at
-https://github.com/pulp-platform/IPApproX/blob/master/README.md
-
 ## External contributions
 The supported way to provide external contributions is by forking one of our
 repositories, applying your patch and submitting a pull request where you
 describe your changes in detail, along with motivations.
 The pull request will be evaluated and checked with our regression test suite
 for possible integration.
-If you want to replace our version of an IP with your GitHub fork, just add
-`group: YOUR_GITHUB_NAMESPACE` to its entry in `ips_list.yml` or
-`ips/pulp_soc/ips_list.yml` when using IPApproX, or update the Bender.yml file.
+If you want to replace our version of an IP with your GitHub fork, just 
+update the Bender.yml file and run `./utils/bin/bender update`.
 While we are quite relaxed in terms of coding style, please try to follow these
 recommendations:
 https://github.com/pulp-platform/ariane/blob/master/CONTRIBUTING.md
 
 ## Known issues
-The current version of the PULPissimo platform does not include yet an FPGA port
-or example scripts for ASIC synthesis; both things may be deployed in the
-future.
-The `ipstools` includes only partial support for simulation flows different from
-ModelSim/QuestaSim.
 
 ## Support & Questions
 For support on any issue related to this platform or any of the IPs, please add
